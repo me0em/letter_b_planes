@@ -1,4 +1,5 @@
 import torch
+from torchvision import transforms  
 import pandas as pd
 import numpy as np
 from PIL import Image
@@ -30,6 +31,9 @@ class PlaneSet(torch.utils.data.Dataset):
         super().__init__()
         self.dir_path = dir_path
         self.df = df
+        self.transform = transforms.Compose([
+            transforms.ToTensor()
+        ])
         
     def expand_path(self, name):
         return self.dir_path + name + ".png"
@@ -38,16 +42,16 @@ class PlaneSet(torch.utils.data.Dataset):
         _class, name = tuple(self.df.iloc[idx])
         
         path = self.expand_path(name)
-        img_arr = np.array(Image.open(path))
+        pil_img = Image.open(path)
+        img = self.transform(pil_img)
 
-        # shape of image must be (3, 20, 20)
-        # but (wtf) there are some 4-channel
-        # photos so we must manage this. Also
-        # we need to cut fourth channel off
-        # if exists
-        img_arr = img_arr[:, :, :3].reshape(3, 20, 20)
+        # shape of image must be (3, 20, 20) but
+        # (wtf) there are some 4-channel photos
+        # so we must manage this. Also we need to
+        # cut fourth channel off if exists
+        img = img[:3, :, :]
 
-        return img_arr, _class
+        return img, _class
     
     def __len__(self):
         return len(self.df)
