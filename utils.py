@@ -1,10 +1,9 @@
 import torch
-from torchvision import transforms  
 import pandas as pd
 import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
-
+from torchvision import transforms
 import os
 import fnmatch
 import locale
@@ -27,13 +26,27 @@ def collect_paths(parrent_path, pattern="*.tif"):
 
 
 class PlaneSet(torch.utils.data.Dataset):
-    def __init__(self, dir_path, df):
+    def __init__(self, dir_path, df, transformation=None, augmentation=None):
         super().__init__()
+        
         self.dir_path = dir_path
         self.df = df
-        self.transform = transforms.Compose([
-            transforms.ToTensor()
-        ])
+        
+        # define transform
+        if transformation is None:
+            self.transform = transforms.Compose([
+                    transforms.ToTensor()
+            ])
+        else:
+            self.transform = transformation
+        
+        # define augmentation
+        if augmentation is None:
+            self.augmentation = None  # do nothing
+        else:
+            self.augmentation = augmentation
+            
+        return
         
     def expand_path(self, name):
         return self.dir_path + name + ".png"
@@ -42,19 +55,58 @@ class PlaneSet(torch.utils.data.Dataset):
         _class, name = tuple(self.df.iloc[idx])
         
         path = self.expand_path(name)
-        pil_img = Image.open(path)
-        img = self.transform(pil_img)
+        pil_image = Image.open(path)
+        img_arr = self.transform(pil_image)
+        
+        # cut off 4-channel if exists
+        img_arr = img_arr[:3, :, :]
+        
+        if self.augmentation is not None:
+            img_arr = self.augmentation(img_arr)
 
-        # shape of image must be (3, 20, 20) but
-        # (wtf) there are some 4-channel photos
-        # so we must manage this. Also we need to
-        # cut fourth channel off if exists
-        img = img[:3, :, :]
-
-        return img, _class
+        return img_arr, _class
     
     def __len__(self):
         return len(self.df)
+    
+
+class PlaneSet2Neurons(PlaneSet):
+    def __init__(self, dir_path, df, transformation=None, augmentation=None):
+        super().__init__(dir_path, df)
+        
+        self.dir_path = dir_path
+        self.df = df
+        
+    def __getitem__(self, idx):
+        _class, name = tuple(self.df.iloc[idx])
+        
+        if _class == 0:
+            _class = torch.tensor([1, 0])
+        elif _class == 1:
+            _class = torch.tensor([0, 1])
+        
+        path = self.expand_path(name)
+        pil_image = Image.open(path)
+        img_arr = self.transform(pil_image)
+        
+        # cut off 4-channel if exists
+        img_arr = img_arr[:3, :, :]
+        
+        if self.augmentation is not None:
+            img_arr = self.augmentation(img_arr)
+
+        return img_arr, _class
+
+
+def configurate_xy_tensors(x, y):
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    x = x.to(device=device)
+    y = y.to(device=device)
+    x = x.to(torch.float32)
+    y = y.to(torch.float32)
+    y = y.unsqueeze(1)
+    
+    return x, y
 
 
 def plot_grid(planes):
@@ -78,8 +130,5 @@ def plot_grid(planes):
     plt.show()
 
 
-def build_datasets(csv_path, images_path):
-    with open(csv_path, "r") as file:
-        data = pd.read_csv(file)
-
-    return PlaneSet(images_path, data)
+def build_dataset(df, images_path, augmentation):
+    return PlaneSet(images_path, df, augmentation=augmentation)
