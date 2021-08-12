@@ -92,11 +92,13 @@ class PlaneSet2Neurons(PlaneSet):
         # cut off 4-channel if exists
         img_arr = img_arr[:3, :, :]
         
+        # for inceptionv4 only!
+        img_arr = transforms.Resize(299)(img_arr)
+        
         if self.augmentation is not None:
             img_arr = self.augmentation(img_arr)
 
         return img_arr, _class
-
 
 def configurate_xy_tensors(x, y):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
